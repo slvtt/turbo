@@ -10,32 +10,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Единая сборка всех приложений
-      - name: Build with Turbo
+      # 1. Установка зависимостей
+      - name: Setup PNPM
         uses: pnpm/action-setup@v2
         with:
           version: 8
-          run_install: |
-            args: []
-          run_build: |
-            args: []
 
-      # 2. Создаем универсальный Docker-образ
-      - name: Build Docker Image
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 2. Сборка всех приложений
+      - name: Build with Turbo
+        run: pnpm turbo run build
+
+      # 3. Отдельная сборка Docker-образов
+      - name: Build Docker Images
         run: |
-          docker build \
-            --build-arg APP_NAME=web \
-            -t web-app \
-            -f ./.docker/Dockerfile .
-
-          docker build \
-            --build-arg APP_NAME=docs \
-            -t docs-app \
-            -f ./.docker/Dockerfile .
-
+          docker build -t web-app -f apps/web/Dockerfile .
+          docker build -t docs-app -f apps/docs/Dockerfile .
           docker save web-app docs-app | gzip > apps.tar.gz
 
-      # 3. Деплой на сервер
+      # 4. Деплой
       - name: Deploy to Server
         run: |
           scp -i ~/.ssh/key apps.tar.gz docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
