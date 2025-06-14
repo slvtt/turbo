@@ -7,62 +7,57 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Установка pnpm и кэширование
-      - name: Setup PNPM
+      # 1. Настройка Docker Buildx с правильным драйвером
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+        with:
+          driver: docker-container
+          buildkitd-flags: --debug
+
+      # 2. Установка зависимостей
+      - name: Install dependencies
         uses: pnpm/action-setup@v2
         with:
           version: 8
-
-      - name: Install dependencies
-        run: pnpm install
-
-      # 2. Сборка через Turborepo
-      - name: Build with Turbo
-        run: pnpm turbo run build --filter={web,docs}
+          run_install: true
+          args: --frozen-lockfile
 
       # 3. Сборка образов с кэшированием
-      - name: Build Docker images
+      - name: Build web-app
         uses: docker/build-push-action@v4
         with:
           context: .
           file: apps/web/Dockerfile
           tags: web-app:latest
-          outputs: type=docker,dest=web-app.tar
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          outputs: type=docker,dest=web-app.tar
 
-      - name: Build Docs image
+      - name: Build docs-app
         uses: docker/build-push-action@v4
         with:
           context: .
           file: apps/docs/Dockerfile
           tags: docs-app:latest
-          outputs: type=docker,dest=docs-app.tar
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          outputs: type=docker,dest=docs-app.tar
 
-      # 4. Подготовка архива
-      - name: Prepare artifacts
-        run: |
-          tar -czvf apps.tar.gz web-app.tar docs-app.tar docker-compose.prod.yml
-
-      # 5. Деплой
+      # 4. Деплой на сервер
       - name: Deploy to Server
         env:
-          SSH_OPTS: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+          SSH_OPTS: "-o StrictHostKeyChecking=no"
         run: |
+          tar -czvf apps.tar.gz *.tar docker-compose.prod.yml
           scp $SSH_OPTS -i ~/.ssh/key apps.tar.gz ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
           ssh $SSH_OPTS -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "
-            cd /app && \
-            tar -xzvf apps.tar.gz && \
-            docker load -i web-app.tar && \
-            docker load -i docs-app.tar && \
-            docker compose -f docker-compose.prod.yml down && \
-            docker compose -f docker-compose.prod.yml up -d --force-recreate && \
-            docker system prune -af && \
+            cd /app
+            tar -xzvf apps.tar.gz
+            docker load -i web-app.tar
+            docker load -i docs-app.tar
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
             rm *.tar *.tar.gz
           "
