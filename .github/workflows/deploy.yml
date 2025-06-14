@@ -18,6 +18,10 @@ jobs:
           chmod 600 ~/.ssh/key
           ssh-keyscan ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
+      - name: Upload compose file
+        run: |
+          scp -i ~/.ssh/key docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
+
       - name: Prepare Server Directory
         run: |
           ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
