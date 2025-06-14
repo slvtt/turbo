@@ -1,4 +1,4 @@
-name: Deploy to Server
+name: Deploy via Image Transfer
 
 on:
   push:
@@ -8,8 +8,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: |
+          docker build -t my-app -f apps/web/Dockerfile .
+          docker save my-app | gzip > my-app.tar.gz
 
       - name: Setup SSH
         run: |
@@ -18,29 +22,17 @@ jobs:
           chmod 600 ~/.ssh/key
           ssh-keyscan ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
-      - name: Upload compose file
+      - name: Transfer and Deploy
         run: |
-          scp -i ~/.ssh/key docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
-
-      - name: Prepare Server Directory
-        run: |
+          scp -i ~/.ssh/key my-app.tar.gz ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/tmp/
           ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          mkdir -p /app
-          cd /app
-          if [ -d .git ]; then
-            git pull origin main
-          else
-            git clone https://github.com/${{ github.repository }}.git /app
-          fi
-          EOF
-
-      - name: Deploy Application
-        run: |
-          ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
-          cd /app
-          git checkout main
-          git reset --hard origin/main
-          docker compose down
-          docker compose build --no-cache
-          docker compose up -d
+          docker load -i /tmp/my-app.tar.gz
+          docker stop my-app || true
+          docker rm my-app || true
+          docker run -d \
+            -p 3000:3000 \
+            --name my-app \
+            --restart unless-stopped \
+            my-app
+          rm /tmp/my-app.tar.gz
           EOF
