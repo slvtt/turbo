@@ -1,6 +1,9 @@
 # .docker/Dockerfile
 ARG BUILD_DIR
 FROM node:18-alpine AS builder
+
+RUN npm install -g pnpm
+
 WORKDIR /app
 COPY . .
 RUN pnpm install
