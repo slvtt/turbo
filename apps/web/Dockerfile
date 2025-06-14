@@ -21,4 +21,4 @@ COPY --from=builder /app/public ./apps/web/public
 COPY --from=builder /app/.next/static ./apps/web/.next/static
 
 EXPOSE 3000
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "server.js"]
