@@ -1,4 +1,4 @@
-name: Deploy Next.js Apps
+name: Turbo Docker Deploy
 
 on:
   push:
@@ -10,54 +10,31 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Настройка Docker Buildx с правильным драйвером
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-        with:
-          driver: docker-container
-          buildkitd-flags: --debug
-
-      # 2. Установка зависимостей
-      - name: Install dependencies
+      # 1. Единая сборка всех приложений
+      - name: Build with Turbo
         uses: pnpm/action-setup@v2
         with:
           version: 8
-          run_install: true
-          args: --frozen-lockfile
+          run_install: |
+            args: [--frozen-lockfile]
+          run_build: |
+            args: []
 
-      # 3. Сборка образов с кэшированием
-      - name: Build web-app
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: apps/web/Dockerfile
-          tags: web-app:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          outputs: type=docker,dest=web-app.tar
-
-      - name: Build docs-app
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: apps/docs/Dockerfile
-          tags: docs-app:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          outputs: type=docker,dest=docs-app.tar
-
-      # 4. Деплой на сервер
-      - name: Deploy to Server
-        env:
-          SSH_OPTS: "-o StrictHostKeyChecking=no"
+      # 2. Создаем универсальный Docker-образ
+      - name: Build Docker Image
         run: |
-          tar -czvf apps.tar.gz *.tar docker-compose.prod.yml
-          scp $SSH_OPTS -i ~/.ssh/key apps.tar.gz ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
-          ssh $SSH_OPTS -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "
+          docker build -t turbo-apps \
+            --build-arg BUILD_DIR=./apps \
+            -f ./.docker/Dockerfile .
+          
+          docker save turbo-apps | gzip > apps.tar.gz
+
+      # 3. Деплой на сервер
+      - name: Deploy to Server
+        run: |
+          scp -i ~/.ssh/key apps.tar.gz docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
+          ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "
             cd /app
-            tar -xzvf apps.tar.gz
-            docker load -i web-app.tar
-            docker load -i docs-app.tar
+            docker load -i apps.tar.gz
             docker compose -f docker-compose.prod.yml up -d --force-recreate
-            rm *.tar *.tar.gz
           "

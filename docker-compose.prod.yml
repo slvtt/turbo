@@ -2,21 +2,15 @@ version: '3.8'
 
 services:
   web:
-    image: web-app
-    environment:
-      - NODE_ENV=production
+    image: turbo-apps
+    command: ["web"]
     ports:
       - "3000:3000"
     restart: unless-stopped
-    volumes:
-      - ./apps/web/.next/static:/app/.next/static
 
   docs:
-    image: docs-app
-    environment:
-      - NODE_ENV=production
+    image: turbo-apps
+    command: ["docs"]
     ports:
       - "4000:3000"
     restart: unless-stopped
-    volumes:
-      - ./apps/docs/.next/static:/app/.next/static
