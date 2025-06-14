@@ -7,8 +7,8 @@
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types",
-    "docker:build": "turbo run docker:build && docker compose build",
-    "deploy": "pnpm docker:build && scp docker-compose.prod.yml user@server:/app && ssh user@server 'cd /app && docker compose up -d'"
+    "docker-build": "turbo run docker-build && docker compose -f docker-compose.prod.yml build",
+    "deploy": "pnpm docker-build && scp docker-compose.prod.yml user@your-server:/app/ && ssh user@your-server 'cd /app && docker compose -f docker-compose.prod.yml up -d --force-recreate'"
   },
   "devDependencies": {
     "prettier": "^3.5.3",
