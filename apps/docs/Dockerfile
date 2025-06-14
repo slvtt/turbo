@@ -8,7 +8,7 @@ WORKDIR /app
 COPY . .
 
 # Устанавливаем зависимости и собираем проект
-RUN pnpm install --frozen-lockfile && \
+RUN pnpm install && \
     pnpm turbo run build --filter=web
 
 # Финальный образ
