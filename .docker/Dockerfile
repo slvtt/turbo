@@ -1,28 +1,19 @@
 # .docker/Dockerfile
-ARG BUILD_DIR
+ARG APP_NAME
+
 FROM node:18-alpine AS builder
-
-RUN npm install -g pnpm
-
 WORKDIR /app
 COPY . .
 RUN pnpm install
-RUN pnpm turbo run build
+RUN pnpm turbo run build --filter=${APP_NAME}
 
 FROM node:18-alpine
 WORKDIR /app
 
-# Web App
-COPY --from=builder ${BUILD_DIR}/web/.next/standalone ./web/
-COPY --from=builder ${BUILD_DIR}/web/public ./web/public
-COPY --from=builder ${BUILD_DIR}/web/.next/static ./web/.next/static
+# Копируем только нужное приложение
+COPY --from=builder /app/apps/${APP_NAME}/.next/standalone ./
+COPY --from=builder /app/apps/${APP_NAME}/public ./public
+COPY --from=builder /app/apps/${APP_NAME}/.next/static ./.next/static
 
-# Docs App
-COPY --from=builder ${BUILD_DIR}/docs/.next/standalone ./docs/
-COPY --from=builder ${BUILD_DIR}/docs/public ./docs/public
-COPY --from=builder ${BUILD_DIR}/docs/.next/static ./docs/.next/static
-
-# Entrypoint скрипт
-COPY deploy/docker-entrypoint.sh .
-RUN chmod +x docker-entrypoint.sh
-ENTRYPOINT ["./docker-entrypoint.sh"]
+EXPOSE 3000
+CMD ["node", "server.js"]

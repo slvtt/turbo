@@ -23,11 +23,17 @@ jobs:
       # 2. Создаем универсальный Docker-образ
       - name: Build Docker Image
         run: |
-          docker build -t turbo-apps \
-            --build-arg BUILD_DIR=./apps \
+          docker build \
+            --build-arg APP_NAME=web \
+            -t web-app \
             -f ./.docker/Dockerfile .
-          
-          docker save turbo-apps | gzip > apps.tar.gz
+
+          docker build \
+            --build-arg APP_NAME=docs \
+            -t docs-app \
+            -f ./.docker/Dockerfile .
+
+          docker save web-app docs-app | gzip > apps.tar.gz
 
       # 3. Деплой на сервер
       - name: Deploy to Server
