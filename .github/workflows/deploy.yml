@@ -32,10 +32,29 @@ jobs:
 
       # 4. Деплой
       - name: Deploy to Server
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
         run: |
-          scp -i ~/.ssh/key apps.tar.gz docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
-          ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "
+          # 1. Создаем SSH-ключ
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          # 2. Добавляем хост в known_hosts
+          ssh-keyscan -H ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+
+          # 3. Копируем файлы с проверкой
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key \
+            apps.tar.gz \
+            docker-compose.prod.yml \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
+
+          # 4. Запускаем на сервере
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key \
+            ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
             cd /app
             docker load -i apps.tar.gz
             docker compose -f docker-compose.prod.yml up -d --force-recreate
-          "
+            docker image prune -f
+            rm apps.tar.gz
+          EOF
