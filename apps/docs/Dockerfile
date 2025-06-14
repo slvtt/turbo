@@ -1,24 +1,24 @@
-# Используем базовый образ с Node.js и pnpm
+# Шаг 1: Сборка
 FROM node:18-alpine AS builder
-
-# Устанавливаем pnpm глобально
 RUN npm install -g pnpm
-
 WORKDIR /app
 COPY . .
 
-# Устанавливаем зависимости и собираем проект
-RUN pnpm install && \
-    pnpm turbo run build --filter=web
+# Устанавливаем зависимости только для нужного приложения
+RUN pnpm install --filter=web
+RUN pnpm turbo run build --filter=web
 
-# Финальный образ
+# Шаг 2: Финальный образ
 FROM node:18-alpine
 WORKDIR /app
 
-# Копируем только необходимые файлы
-COPY --from=builder /app/web/.next/standalone ./
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/.next/static ./.next/static
+# Копируем standalone-версию Next.js
+COPY --from=builder /app/apps/docs/.next/standalone ./
+COPY --from=builder /app/apps/docs/public ./public
+COPY --from=builder /app/apps/docs/.next/static ./.next/static
 
-EXPOSE 3001
+# Копируем необходимые зависимости
+COPY --from=builder /app/node_modules ./node_modules
+
+EXPOSE 3000
 CMD ["node", "server.js"]
