@@ -7,47 +7,62 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Установка pnpm
-      - name: Install pnpm
+      # 1. Установка pnpm и кэширование
+      - name: Setup PNPM
         uses: pnpm/action-setup@v2
         with:
           version: 8
 
-      # 2. Установка зависимостей с кэшированием
       - name: Install dependencies
-        uses: pnpm/action-setup@v2
-        with:
-          run_install: true
-          args: --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
-      # 3. Сборка проектов через Turborepo
+      # 2. Сборка через Turborepo
       - name: Build with Turbo
-        run: pnpm turbo run build --filter=web --filter=docs
+        run: pnpm turbo run build --filter={web,docs}
 
-      # 4. Сборка Docker-образов
+      # 3. Сборка образов с кэшированием
       - name: Build Docker images
-        run: |
-          docker build -t web-app -f apps/web/Dockerfile .
-          docker build -t docs-app -f apps/docs/Dockerfile .
-          docker save web-app docs-app | gzip > apps.tar.gz
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          tags: web-app:latest
+          outputs: type=docker,dest=web-app.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # 5. Настройка SSH
-      - name: Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/key
-          chmod 600 ~/.ssh/key
-          ssh-keyscan ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
+      - name: Build Docs image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: apps/docs/Dockerfile
+          tags: docs-app:latest
+          outputs: type=docker,dest=docs-app.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      # 6. Деплой
+      # 4. Подготовка архива
+      - name: Prepare artifacts
+        run: |
+          tar -czvf apps.tar.gz web-app.tar docs-app.tar docker-compose.prod.yml
+
+      # 5. Деплой
       - name: Deploy to Server
+        env:
+          SSH_OPTS: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
         run: |
-          scp -i ~/.ssh/key apps.tar.gz docker-compose.prod.yml ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
-          ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "
-            cd /app
-            docker load -i apps.tar.gz
-            docker compose -f docker-compose.prod.yml up -d --force-recreate
+          scp $SSH_OPTS -i ~/.ssh/key apps.tar.gz ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }}:/app/
+          ssh $SSH_OPTS -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "
+            cd /app && \
+            tar -xzvf apps.tar.gz && \
+            docker load -i web-app.tar && \
+            docker load -i docs-app.tar && \
+            docker compose -f docker-compose.prod.yml down && \
+            docker compose -f docker-compose.prod.yml up -d --force-recreate && \
+            docker system prune -af && \
+            rm *.tar *.tar.gz
           "
