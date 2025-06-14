@@ -1,4 +1,4 @@
-name: Deploy Demo
+name: Deploy to Server
 
 on:
   push:
@@ -7,9 +7,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Setup SSH
@@ -19,12 +18,25 @@ jobs:
           chmod 600 ~/.ssh/key
           ssh-keyscan ${{ secrets.SERVER_IP }} >> ~/.ssh/known_hosts
 
-      - name: Deploy
+      - name: Prepare Server Directory
         run: |
-          ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} "
-            cd /app
-            git pull origin main || git clone https://github.com/${{ github.repository }} /app
-            docker compose down
-            docker compose build --no-cache
-            docker compose up -d
-          "
+          ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          mkdir -p /app
+          cd /app
+          if [ -d .git ]; then
+            git pull origin main
+          else
+            git clone https://github.com/${{ github.repository }}.git /app
+          fi
+          EOF
+
+      - name: Deploy Application
+        run: |
+          ssh -i ~/.ssh/key ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_IP }} << 'EOF'
+          cd /app
+          git checkout main
+          git reset --hard origin/main
+          docker compose down
+          docker compose build --no-cache
+          docker compose up -d
+          EOF
