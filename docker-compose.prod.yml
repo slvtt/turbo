@@ -1,10 +1,22 @@
-version: '3'
+version: '3.8'
+
 services:
   web:
-    image: my-app-web
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
+    image: web-app
+    environment:
+      - NODE_ENV=production
     ports:
       - "3000:3000"
     restart: unless-stopped
+    volumes:
+      - ./apps/web/.next/static:/app/.next/static
+
+  docs:
+    image: docs-app
+    environment:
+      - NODE_ENV=production
+    ports:
+      - "4000:3000"
+    restart: unless-stopped
+    volumes:
+      - ./apps/docs/.next/static:/app/.next/static
