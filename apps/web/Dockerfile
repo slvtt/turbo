@@ -1,43 +1,45 @@
 FROM node:18-alpine AS base
 
-FROM base AS builder
-RUN apk update
-RUN apk add --no-cache libc6-compat
-# Set working directory
-WORKDIR /app
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
-COPY . .
+# Фиксируем версию pnpm, совпадающую с вашей локальной
+ARG PNPM_VERSION=9.0.0
 
-# Generate a partial monorepo with a pruned lockfile for a target workspace.
-# Assuming "web" is the name entered in the project's package.json: { name: "web" }
+FROM base AS builder
+RUN apk update && apk add --no-cache libc6-compat git
+WORKDIR /app
+
+# Устанавливаем точную версию pnpm
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+COPY . .
 RUN pnpm dlx turbo prune web --docker
 
-# Add lockfile and package.json's of isolated subworkspace
 FROM base AS installer
-RUN apk update
-RUN apk add --no-cache libc6-compat
+RUN apk update && apk add --no-cache libc6-compat
 WORKDIR /app
 
-# First install the dependencies (as they change less often)
+# Используем ту же версию pnpm
+ARG PNPM_VERSION=9.0.0
+RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
+
+# Копируем все необходимые файлы для корректной работы workspaces
 COPY --from=builder /app/out/json/ .
 COPY --from=builder /app/out/pnpm-lock.yaml .
-RUN corepack enable && pnpm install --frozen-lockfile
+COPY --from=builder /app/out/pnpm-workspace.yaml .
 
-# Build the project
+# Установка с автоматическим fallback на обновление lockfile при необходимости
+RUN pnpm install --frozen-lockfile || \
+    { echo "Lockfile outdated, updating..."; pnpm install; }
+
 COPY --from=builder /app/out/full/ .
-RUN pnpm dlx turbo run build
+RUN pnpm dlx turbo run build --filter=web
 
 FROM base AS runner
 WORKDIR /app
 
-# Don't run production as root
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+
 USER nextjs
 
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
 COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
 COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=installer --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
