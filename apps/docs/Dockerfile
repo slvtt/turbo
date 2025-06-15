@@ -28,7 +28,7 @@ RUN pnpm install --frozen-lockfile || \
     { echo "Lockfile outdated, updating..."; pnpm install; }
 
 COPY --from=builder /app/out/full/ .
-RUN pnpm dlx turbo run build --filter=web
+RUN pnpm dlx turbo run build --filter=docs
 
 FROM base AS runner
 WORKDIR /app
