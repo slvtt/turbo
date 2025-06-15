@@ -16,16 +16,14 @@ FROM base AS installer
 RUN apk update && apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Используем ту же версию pnpm
+
 ARG PNPM_VERSION=9.0.0
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 
-# Копируем все необходимые файлы для корректной работы workspaces
 COPY --from=builder /app/out/json/ .
 COPY --from=builder /app/out/pnpm-lock.yaml .
 COPY --from=builder /app/out/pnpm-workspace.yaml .
 
-# Установка с автоматическим fallback на обновление lockfile при необходимости
 RUN pnpm install --frozen-lockfile || \
     { echo "Lockfile outdated, updating..."; pnpm install; }
 
@@ -40,8 +38,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 USER nextjs
 
-COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=installer --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+COPY --from=installer --chown=nextjs:nodejs /app/apps/docs/.next/standalone ./
+COPY --from=installer --chown=nextjs:nodejs /app/apps/docs/.next/static ./apps/docs/.next/static
+COPY --from=installer --chown=nextjs:nodejs /app/apps/docs/public ./apps/docs/public
 
-CMD node apps/web/server.js
+CMD node apps/docs/server.js
