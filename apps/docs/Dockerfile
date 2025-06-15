@@ -10,7 +10,7 @@ WORKDIR /app
 # Устанавливаем точную версию pnpm
 RUN corepack enable && corepack prepare pnpm@${PNPM_VERSION} --activate
 COPY . .
-RUN pnpm dlx turbo prune web --docker
+RUN pnpm dlx turbo prune docs --docker
 
 FROM base AS installer
 RUN apk update && apk add --no-cache libc6-compat
