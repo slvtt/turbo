@@ -4,6 +4,7 @@ FROM base AS builder
 RUN apk update && apk add --no-cache libc6-compat
 WORKDIR /app
 
+RUN npm install -g turbo && npm install -g corepack
 RUN corepack enable && pnpm install -g turbo
 
 COPY . .
