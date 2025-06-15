@@ -4,6 +4,8 @@ FROM base AS builder
 RUN apk update && apk add --no-cache libc6-compat
 WORKDIR /app
 
+COPY package.json pnpm-lock.yaml .npmrc ./
+
 RUN npm install -g pnpm && pnpm install -g turbo
 
 COPY . .
