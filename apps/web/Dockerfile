@@ -1,24 +1,39 @@
-# Шаг 1: Сборка
-FROM node:18-alpine AS builder
-RUN npm install -g pnpm
+FROM node:18-alpine AS base
+
+FROM base AS builder
+RUN apk update && apk add --no-cache libc6-compat
 WORKDIR /app
+
+RUN corepack enable && pnpm install -g turbo
+
 COPY . .
 
-# Устанавливаем зависимости только для нужного приложения
-RUN pnpm install --filter=web
-RUN pnpm turbo run build --filter=web
+RUN pnpm turbo prune web --docker
 
-# Шаг 2: Финальный образ
-FROM node:18-alpine
+
+FROM base AS installer
+RUN apk update && apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Копируем standalone-версию Next.js
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/public ./public
-COPY --from=builder /app/apps/web/.next/static ./.next/static
+COPY --from=builder /app/out/json/ .
+COPY --from=builder /app/out/pnpm-lock.yaml .
 
-# Копируем необходимые зависимости
-COPY --from=builder /app/node_modules ./node_modules
+RUN pnpm install --frozen-lockfile
 
-EXPOSE 3000
+COPY --from=builder /app/out/full/ .
+
+RUN pnpm turbo run build --filter=web
+
+FROM base AS runner
+WORKDIR /app
+
+
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 nextjs
+USER nextjs
+
+COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=installer --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
+
 CMD ["node", "apps/web/server.js"]
