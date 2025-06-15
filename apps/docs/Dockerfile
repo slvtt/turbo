@@ -1,41 +1,45 @@
 FROM node:18-alpine AS base
 
 FROM base AS builder
-RUN apk update && apk add --no-cache libc6-compat
+RUN apk update
+RUN apk add --no-cache libc6-compat
+# Set working directory
 WORKDIR /app
-
-COPY package.json pnpm-lock.yaml .npmrc ./
-
-RUN npm install -g pnpm && pnpm install -g turbo
-
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY . .
 
-RUN pnpm turbo prune web --docker
+# Generate a partial monorepo with a pruned lockfile for a target workspace.
+# Assuming "web" is the name entered in the project's package.json: { name: "web" }
+RUN pnpm dlx turbo prune web --docker
 
-
+# Add lockfile and package.json's of isolated subworkspace
 FROM base AS installer
-RUN apk update && apk add --no-cache libc6-compat
+RUN apk update
+RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
+# First install the dependencies (as they change less often)
 COPY --from=builder /app/out/json/ .
 COPY --from=builder /app/out/pnpm-lock.yaml .
+RUN corepack enable && pnpm install --frozen-lockfile
 
-RUN pnpm install --frozen-lockfile
-
+# Build the project
 COPY --from=builder /app/out/full/ .
-
-RUN pnpm turbo run build --filter=docs
+RUN pnpm dlx turbo run build
 
 FROM base AS runner
 WORKDIR /app
 
-
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+# Don't run production as root
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
 USER nextjs
 
-COPY --from=installer --chown=nextjs:nodejs /app/apps/docs/.next/standalone ./
-COPY --from=installer --chown=nextjs:nodejs /app/apps/docs/.next/static ./apps/docs/.next/static
-COPY --from=installer --chown=nextjs:nodejs /app/apps/docs/public ./apps/docs/public
+# Automatically leverage output traces to reduce image size
+# https://nextjs.org/docs/advanced-features/output-file-tracing
+COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
+COPY --from=installer --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=installer --chown=nextjs:nodejs /app/apps/web/public ./apps/web/public
 
-CMD ["node", "apps/docs/server.js"]
+CMD node apps/web/server.js
